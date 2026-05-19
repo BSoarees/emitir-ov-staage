@@ -401,6 +401,14 @@ async function loadPendentes(){
   }
 }
 
+function bpDeeplink(doc, plat){
+  const url = new URL("https://bsoarees.github.io/cadastrar-bp-v4/");
+  url.searchParams.set("doc", doc||"");
+  url.searchParams.set("company", COMPANY_CODE);
+  if(plat) url.searchParams.set("platform", plat);
+  return url.toString();
+}
+
 function renderPendentes(){
   const tbody=el("tbody-pendentes");
   if(pendentes.length===0){ tbody.innerHTML='<tr><td colspan="8" class="empty">Nenhuma venda no filtro.</td></tr>'; updateStats(); return; }
@@ -408,6 +416,15 @@ function renderPendentes(){
     const pillClass = v._estado==="pronta"?"ok": v._estado==="ja_emitida"?"muted" : v._estado==="sem_bp"||v._estado==="sem_material"?"warn":"err";
     const pillTxt = v._estado==="pronta"?"PRONTA": v._estado==="ja_emitida"?"OV "+v.sap_sales_order : v._estado;
     const canSel = v._estado==="pronta";
+
+    // Action por estado: cada bloqueio tem 1 link pra desbloquear
+    let action = "";
+    if(v._estado==="sem_bp" && v.bp_document_number){
+      action = `<a href="${bpDeeplink(v.bp_document_number, v.source_platform)}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none;">→ Cadastrar BP</a>`;
+    } else if(v._estado==="sem_material" || (v._estado||"").startsWith("material_status_")){
+      action = `<a href="#" class="link-bater-mat" data-prod="${(v.product_source_id||"")}" data-plat="${v.source_platform}" style="color:var(--accent);font-size:11px;text-decoration:none;">→ Bater material</a>`;
+    }
+
     return `<tr data-id="${v.id}">
       <td><input type="checkbox" class="checkbox sel-pend" data-id="${v.id}" ${canSel?"":"disabled"}/></td>
       <td>${fmtDate(v.sale_date)}</td>
@@ -416,11 +433,21 @@ function renderPendentes(){
       <td>${(v.product_name||"").slice(0,40)}</td>
       <td>${v._material||'<span class="pill warn">faltando</span>'}</td>
       <td style="text-align:right;">${fmtBRL(v.total_value_cents)}</td>
-      <td><span class="pill ${pillClass}">${pillTxt}</span></td>
+      <td><span class="pill ${pillClass}">${pillTxt}</span>${action?"<br/>"+action:""}</td>
     </tr>`;
   });
   tbody.innerHTML = rows.join("");
   tbody.querySelectorAll(".sel-pend").forEach(cb=> cb.addEventListener("change", updateStats));
+  tbody.querySelectorAll(".link-bater-mat").forEach(a=> a.addEventListener("click", e=>{
+    e.preventDefault();
+    document.querySelector('.tab[data-tab="materiais"]').click();
+    // Quando carregar, foca no produto certo
+    const prod = a.dataset.prod;
+    setTimeout(()=>{
+      const row = document.querySelector(`.mat-input[data-prod-src="${prod}"]`);
+      if(row){ row.closest("tr").scrollIntoView({behavior:"smooth", block:"center"}); row.focus(); row.style.borderColor="var(--accent)"; }
+    }, 600);
+  }));
   updateStats();
 }
 
@@ -641,7 +668,7 @@ async function loadMateriais(){
       <td>${p.source_platform}</td>
       <td>${(p.product_name||"").slice(0,80)}</td>
       <td><span class="pill ${p.mapping_status==='mapped'?'ok':p.mapping_status==='not_in_sap'?'err':'warn'}">${p.mapping_status||"—"}</span></td>
-      <td><input class="mat-input" data-id="${p.id}" list="materiais-list" value="${p.sap_material_code||""}" placeholder="ex.: SMM070" style="max-width:140px;"/></td>
+      <td><input class="mat-input" data-id="${p.id}" data-prod-src="${p.source_id||""}" list="materiais-list" value="${p.sap_material_code||""}" placeholder="ex.: SMM070" style="max-width:140px;"/></td>
       <td>
         <button class="mat-save" data-id="${p.id}" style="padding:6px 12px;font-size:12px;">Salvar</button>
         <button class="secondary mat-skip" data-id="${p.id}" style="padding:6px 12px;font-size:12px;">Ignorar</button>
