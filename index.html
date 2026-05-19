@@ -544,7 +544,7 @@ el("btn-emitir-batch").addEventListener("click", async ()=>{
 });
 
 el("btn-bp-massa").addEventListener("click", ()=>{
-  // Pega vendas com BP faltando (sem_bp ou sem_bp_sap), dedup por doc, monta XLSX no formato cadastrar-bp-v4
+  // Pega vendas com BP faltando, dedup por doc, envia via localStorage handoff pro cadastrar-bp-v4
   const faltantes = pendentes.filter(v=> (v._estado==="sem_bp" || v._estado==="sem_bp_sap") && v.bp_document_number);
   if(faltantes.length===0){ toast("Nenhum BP faltando no filtro atual.", "err"); return; }
   const dedup = new Map();
@@ -566,14 +566,17 @@ el("btn-bp-massa").addEventListener("click", ()=>{
     });
   });
   const rows = [...dedup.values()];
-  const cols = ["cnpj_cpf","full_name","email","phone","zip_code","street","house_number","neighborhood","city","state"];
-  const aoa = [cols, ...rows.map(r=> cols.map(c=> r[c] || ""))];
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "BPs");
-  const fname = `bps-staage-faltantes-${new Date().toISOString().slice(0,10)}.xlsx`;
-  XLSX.writeFile(wb, fname);
-  toast(`<strong>${rows.length} BP(s) únicos</strong> exportados em ${fname}.<br/>Abrindo cadastrar-bp-v4…`, "ok", 6000);
-  setTimeout(()=> window.open("https://bsoarees.github.io/cadastrar-bp-v4/?company="+COMPANY_CODE, "_blank"), 800);
+  const payload = {
+    source: "emitir-ov-staage",
+    company_code: COMPANY_CODE,
+    created_at: new Date().toISOString(),
+    rows
+  };
+  try {
+    localStorage.setItem("bp_handoff_v1", JSON.stringify(payload));
+  } catch(e){ toast("Falha ao preparar handoff: "+e.message, "err"); return; }
+  toast(`<strong>${rows.length} BP(s) únicos</strong> enviados pro cadastrar-bp-v4. Abrindo…`, "ok", 5000);
+  setTimeout(()=> window.open(`https://bsoarees.github.io/cadastrar-bp-v4/?handoff=1&company=${COMPANY_CODE}`, "_blank"), 600);
 });
 
 el("btn-export-csv").addEventListener("click", ()=>{
