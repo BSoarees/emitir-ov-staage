@@ -139,7 +139,8 @@
           <label>Estado</label>
           <select id="fl-estado">
             <option value="pronta">Só prontas</option>
-            <option value="todas">Todas (inclui bloqueadas)</option>
+            <option value="bloqueadas">Pagas bloqueadas (falta BP/material)</option>
+            <option value="todas">Todas pagas</option>
           </select>
         </div>
         <div style="flex:0;">
@@ -349,8 +350,9 @@ async function loadPendentes(){
 
   try {
     const url=new URL(SUPABASE_URL+"/rest/v1/sales_orders");
-    url.searchParams.set("select","id,source_sale_id,source_platform,bp_document_number,bp_sap_number,product_source_id,product_name,total_value_cents,sale_date,status,sap_sales_order,sap_sync_eligible");
+    url.searchParams.set("select","id,source_sale_id,source_platform,bp_document_number,bp_sap_number,product_source_id,product_name,total_value_cents,sale_date,sale_status,status,sap_sales_order,sap_sync_eligible");
     url.searchParams.set("company_code", "eq."+COMPANY_CODE);
+    url.searchParams.set("sale_status", "eq.paid");
     url.searchParams.append("sale_date", `gte.${start}`);
     url.searchParams.append("sale_date", `lt.${end}`);
     if(plat) url.searchParams.set("source_platform", "eq."+plat);
@@ -403,6 +405,7 @@ async function loadPendentes(){
     });
 
     if(estado==="pronta") vendas = vendas.filter(v=>v._estado==="pronta");
+    else if(estado==="bloqueadas") vendas = vendas.filter(v=>v._estado!=="pronta" && v._estado!=="ja_emitida" && v._estado!=="r0_cortesia");
     pendentes = vendas;
     renderPendentes();
   } catch(e){
