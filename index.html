@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Emitir OV no SAP · Staage 1420 · Crxate</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg:#0A0A0A; --bg-2:#111; --surface:rgba(255,255,255,0.05); --surface-hover:rgba(255,255,255,0.08);
+    --border:rgba(255,255,255,0.1); --text:#f8fafc; --text-muted:#94a3b8; --text-dim:#64748b;
+    --accent:#10b981; --accent-dim:rgba(16,185,129,0.15);
+    --danger:#ef4444; --danger-dim:rgba(239,68,68,0.15);
+    --warn:#f59e0b; --warn-dim:rgba(245,158,11,0.15);
+    --indigo:#818cf8; --indigo-dim:rgba(99,102,241,0.15);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;min-height:100vh;}
+  .container{max-width:1280px;margin:0 auto;padding:32px 24px 80px;}
+  header{margin-bottom:20px;}
+  header h1{font-size:26px;margin:0 0 6px;font-weight:600;letter-spacing:-0.02em;}
+  header p{color:var(--text-muted);margin:0;font-size:13px;}
+  .badge{display:inline-block;padding:3px 10px;background:var(--accent-dim);color:var(--accent);
+    border-radius:6px;font-size:11px;font-weight:600;margin-left:8px;vertical-align:middle;}
+  .badge.prd{background:var(--danger-dim);color:var(--danger);}
+  .tabs{display:flex;gap:4px;margin-bottom:16px;background:var(--bg-2);padding:4px;border-radius:10px;
+    border:1px solid var(--border);width:fit-content;}
+  .tab{background:transparent;color:var(--text-muted);border:none;padding:8px 16px;font-size:13px;
+    font-weight:500;border-radius:7px;cursor:pointer;font-family:inherit;}
+  .tab:hover{color:var(--text);}
+  .tab.active{background:var(--accent);color:#000;}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+  .card{background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
+  .card h2{font-size:15px;margin:0 0 14px;font-weight:600;}
+  .card h2 small{font-weight:400;color:var(--text-muted);margin-left:8px;font-size:12px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .grid-3{grid-template-columns:1fr 1fr 1fr;}
+  .grid-4{grid-template-columns:1fr 1fr 1fr 1fr;}
+  .full{grid-column:1/-1;}
+  label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:500;}
+  label .req{color:var(--danger);margin-left:2px;}
+  input,select,textarea{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);
+    padding:9px 11px;border-radius:8px;font-size:13px;font-family:inherit;}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);background:var(--surface-hover);}
+  button{background:var(--accent);color:#000;border:none;padding:10px 18px;font-size:13px;font-weight:600;
+    border-radius:8px;cursor:pointer;font-family:inherit;}
+  button:hover{opacity:0.9;}
+  button:disabled{opacity:0.5;cursor:not-allowed;}
+  button.secondary{background:var(--surface);color:var(--text);border:1px solid var(--border);}
+  button.danger{background:var(--danger);color:#fff;}
+  .actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);}
+  th{color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;}
+  tbody tr:hover{background:var(--surface);}
+  tbody tr.selected{background:var(--accent-dim);}
+  .pill{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;}
+  .pill.ok{background:var(--accent-dim);color:var(--accent);}
+  .pill.err{background:var(--danger-dim);color:var(--danger);}
+  .pill.warn{background:var(--warn-dim);color:var(--warn);}
+  .pill.muted{background:var(--surface);color:var(--text-muted);}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;}
+  .filters>div{flex:1;min-width:140px;}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+  .stat{background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:14px;}
+  .stat .label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;}
+  .stat .val{font-size:22px;font-weight:600;margin-top:4px;}
+  .stat .val.accent{color:var(--accent);}
+  .stat .val.warn{color:var(--warn);}
+  .stat .val.danger{color:var(--danger);}
+  .toast-container{position:fixed;top:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:1000;}
+  .toast{background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;
+    min-width:280px;max-width:420px;font-size:13px;animation:slidein 0.2s;}
+  .toast.ok{border-color:var(--accent);}
+  .toast.err{border-color:var(--danger);}
+  @keyframes slidein{from{transform:translateX(20px);opacity:0;}to{transform:none;opacity:1;}}
+  .loading{display:inline-block;width:14px;height:14px;border:2px solid var(--text-muted);
+    border-top-color:var(--accent);border-radius:50%;animation:spin 0.6s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .checkbox{width:auto;cursor:pointer;}
+  .scroll-y{max-height:560px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;}
+  .empty{text-align:center;padding:40px 20px;color:var(--text-muted);font-size:13px;}
+  code{background:var(--surface);padding:2px 6px;border-radius:4px;font-size:11px;}
+  .config-bar{display:flex;align-items:center;gap:14px;padding:10px 14px;background:var(--surface);
+    border:1px solid var(--border);border-radius:8px;margin-bottom:14px;font-size:12px;}
+  .config-bar strong{color:var(--text);}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Emitir OV no SAP <span class="badge prd">Staage 1420 · PRD</span></h1>
+    <p>Dispara <code>salesorderprocess</code> (VA01) no S/4HANA via iFlow. Vendas vêm do Supabase ou planilha.</p>
+  </header>
+
+  <div class="config-bar">
+    <span>iFlow: <strong>SAP CPI BTP PRD</strong></span>
+    <span>Workflow: <strong>[Staage] F3</strong></span>
+    <span>Empresa: <strong>1420 (Staage)</strong></span>
+    <span style="margin-left:auto;color:var(--text-dim);">v0.1 · <a href="https://github.com/BSoarees/emitir-ov-staage" style="color:var(--accent);">source</a></span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="pendentes">Pendentes</button>
+    <button class="tab" data-tab="avulso">Avulso</button>
+    <button class="tab" data-tab="import">Import planilha</button>
+    <button class="tab" data-tab="materiais">Materiais</button>
+  </div>
+
+  <!-- =================== PENDENTES =================== -->
+  <div class="tab-panel active" id="tab-pendentes">
+    <div class="stat-row" id="stats-row">
+      <div class="stat"><div class="label">Total filtradas</div><div class="val" id="st-total">—</div></div>
+      <div class="stat"><div class="label">Prontas pra OV</div><div class="val accent" id="st-pronta">—</div></div>
+      <div class="stat"><div class="label">Bloqueadas (BP/material)</div><div class="val warn" id="st-bloq">—</div></div>
+      <div class="stat"><div class="label">Valor selecionado</div><div class="val accent" id="st-valor">R$ 0,00</div></div>
+    </div>
+
+    <div class="card">
+      <div class="filters">
+        <div>
+          <label>Mês</label>
+          <select id="fl-mes"></select>
+        </div>
+        <div>
+          <label>Plataforma</label>
+          <select id="fl-plataforma">
+            <option value="">Todas</option>
+            <option value="eduzz">Eduzz</option>
+            <option value="easyflow">EasyFlow</option>
+            <option value="pagarme">Pagar.me</option>
+            <option value="tmb">TMB</option>
+          </select>
+        </div>
+        <div>
+          <label>Estado</label>
+          <select id="fl-estado">
+            <option value="pronta">Só prontas</option>
+            <option value="todas">Todas (inclui bloqueadas)</option>
+          </select>
+        </div>
+        <div style="flex:0;">
+          <button id="btn-reload" class="secondary">Recarregar</button>
+        </div>
+      </div>
+
+      <div class="scroll-y">
+        <table id="tbl-pendentes">
+          <thead>
+            <tr>
+              <th style="width:32px;"><input type="checkbox" id="check-all" class="checkbox"/></th>
+              <th>Data</th>
+              <th>Plataforma</th>
+              <th>Cliente</th>
+              <th>Produto</th>
+              <th>Material SAP</th>
+              <th style="text-align:right;">Valor</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-pendentes">
+            <tr><td colspan="8" class="empty">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="actions">
+        <button id="btn-emitir-batch" disabled>Emitir <span id="batch-count">0</span> OV(s) selecionada(s) no SAP PRD</button>
+        <button id="btn-export-csv" class="secondary">Exportar CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== AVULSO =================== -->
+  <div class="tab-panel" id="tab-avulso">
+    <div class="card">
+      <h2>Emitir 1 OV avulsa <small>1420 · Staage · PRD</small></h2>
+      <div class="grid">
+        <div>
+          <label>BP SAP (SoldToParty) <span class="req">*</span></label>
+          <input id="av-bp" placeholder="ex.: 203858" inputmode="numeric"/>
+        </div>
+        <div>
+          <label>Data da OV</label>
+          <input id="av-data" type="date"/>
+        </div>
+        <div class="full">
+          <label>Customer PO (referência) <small style="color:var(--text-dim);">opcional · max 35 chars</small></label>
+          <input id="av-po" placeholder="ex.: PED-AVULSO-001"/>
+        </div>
+        <div>
+          <label>Material SAP <span class="req">*</span></label>
+          <input id="av-material" list="materiais-list" placeholder="ex.: SMM070"/>
+        </div>
+        <div>
+          <label>Quantidade</label>
+          <input id="av-qty" type="number" step="0.001" min="0.001" value="1.000"/>
+        </div>
+        <div>
+          <label>Valor unitário (R$) <span class="req">*</span></label>
+          <input id="av-valor" type="number" step="0.01" min="0.01"/>
+        </div>
+        <div>
+          <label>Unidade</label>
+          <select id="av-unit"><option>HR</option><option>UN</option></select>
+        </div>
+        <div class="full">
+          <label>Descrição do item <small style="color:var(--text-dim);">max 40 chars</small></label>
+          <input id="av-text" placeholder="ex.: Assessoria de Marketing Digital"/>
+        </div>
+      </div>
+      <datalist id="materiais-list"></datalist>
+      <div class="actions">
+        <button id="btn-emitir-avulso">Emitir OV no SAP PRD</button>
+        <button id="btn-limpar-avulso" class="secondary">Limpar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== IMPORT =================== -->
+  <div class="tab-panel" id="tab-import">
+    <div class="card">
+      <h2>Importar lote de OVs <small>XLSX ou CSV</small></h2>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px;">
+        Colunas aceitas: <code>bp_sap</code> (ou <code>sold_to_party</code>), <code>material</code>, <code>quantidade</code>, <code>valor</code>, <code>descricao</code> (opc), <code>customer_po</code> (opc), <code>data</code> (opc YYYY-MM-DD).
+        Cada linha vira 1 OV.
+      </p>
+      <input id="file-input" type="file" accept=".xlsx,.xls,.csv"/>
+      <div class="actions">
+        <button id="btn-download-tpl" class="secondary">Baixar template XLSX</button>
+        <button id="btn-emitir-import" disabled>Emitir <span id="import-count">0</span> OV(s)</button>
+      </div>
+      <div class="scroll-y" style="margin-top:14px;">
+        <table id="tbl-import">
+          <thead><tr><th>#</th><th>BP SAP</th><th>Material</th><th>Qty</th><th>Valor</th><th>Descrição</th><th>Status</th></tr></thead>
+          <tbody id="tbody-import"><tr><td colspan="7" class="empty">Selecione um arquivo</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== MATERIAIS =================== -->
+  <div class="tab-panel" id="tab-materiais">
+    <div class="card">
+      <h2>Batimento de Materiais Staage <small id="mat-count">—</small></h2>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px;">
+        Produtos das plataformas que ainda não têm <code>sap_material_code</code>. Salvar aqui libera as vendas correspondentes pra emitir OV.
+      </p>
+      <div class="filters">
+        <div>
+          <label>Plataforma</label>
+          <select id="mat-fl-plat"><option value="">Todas</option><option>eduzz</option><option>easyflow</option><option>tmb</option><option>pagarme</option></select>
+        </div>
+        <div>
+          <label>Status</label>
+          <select id="mat-fl-status"><option value="pending">Pending</option><option value="not_in_sap">not_in_sap</option><option value="">Todos</option></select>
+        </div>
+        <div style="flex:0;"><button id="btn-mat-reload" class="secondary">Recarregar</button></div>
+      </div>
+      <div class="scroll-y">
+        <table id="tbl-mat">
+          <thead><tr><th>Plataforma</th><th>Produto</th><th>Status</th><th>Material SAP</th><th>Ação</th></tr></thead>
+          <tbody id="tbody-mat"><tr><td colspan="5" class="empty">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ============================================================================
+// CONFIG (público — workflow valida X-API-Key)
+// ============================================================================
+const SUPABASE_URL = "https://feofcpxfknxbrchkoalf.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlb2ZjcHhma254YnJjaGtvYWxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNjQyNTksImV4cCI6MjA4ODc0MDI1OX0.ffroZ8nhmKVdOno53yOC1PzzxfOW832_JIFIB4oDMlI";
+const WEBHOOK_OV  = "https://n8n.main.mktlab.app/webhook/staage-emitir-ov";
+const API_KEY     = "4a359b8cc417413c9a2e1b13a086788b";
+const COMPANY_CODE = "1420";
+
+const sbHeaders = { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY, "Content-Type": "application/json" };
+
+// ============================================================================
+// Utils
+// ============================================================================
+function fmtBRL(cents){ return (Number(cents||0)/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); }
+function fmtBRLNum(v){ return Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); }
+function fmtDate(s){ if(!s) return ""; const d=new Date(s); return d.toLocaleDateString("pt-BR"); }
+function el(id){ return document.getElementById(id); }
+function toast(msg, kind="ok", ms=4500){
+  const d=document.createElement("div"); d.className="toast "+kind; d.innerHTML=msg;
+  el("toast-container").appendChild(d); setTimeout(()=>d.remove(), ms);
+}
+async function sbGet(path, qs){
+  const url=new URL(SUPABASE_URL+"/rest/v1/"+path);
+  for(const k in qs) url.searchParams.set(k, qs[k]);
+  const r=await fetch(url, {headers: sbHeaders});
+  if(!r.ok) throw new Error("Supabase "+r.status+": "+await r.text());
+  return r.json();
+}
+async function sbPatch(path, qs, body){
+  const url=new URL(SUPABASE_URL+"/rest/v1/"+path);
+  for(const k in qs) url.searchParams.set(k, qs[k]);
+  const r=await fetch(url, {method:"PATCH", headers:{...sbHeaders, Prefer:"return=minimal"}, body: JSON.stringify(body)});
+  if(!r.ok) throw new Error("Supabase PATCH "+r.status+": "+await r.text());
+}
+
+// ============================================================================
+// Tabs
+// ============================================================================
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    el("tab-"+btn.dataset.tab).classList.add("active");
+    if(btn.dataset.tab==="materiais") loadMateriais();
+  });
+});
+
+// ============================================================================
+// PENDENTES
+// ============================================================================
+let pendentes = [];
+
+function popMesSelect(){
+  const sel=el("fl-mes"); const now=new Date(); const opts=[];
+  for(let i=0;i<6;i++){
+    const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const v=d.toISOString().slice(0,7);
+    opts.push(`<option value="${v}" ${i===0?"selected":""}>${v}</option>`);
+  }
+  sel.innerHTML=opts.join("");
+}
+
+async function loadPendentes(){
+  el("tbody-pendentes").innerHTML='<tr><td colspan="8" class="empty"><span class="loading"></span> Carregando…</td></tr>';
+  const mes = el("fl-mes").value;
+  const plat = el("fl-plataforma").value;
+  const estado = el("fl-estado").value;
+  const start = mes+"-01"; const endD = new Date(mes+"-01"); endD.setMonth(endD.getMonth()+1);
+  const end = endD.toISOString().slice(0,10);
+
+  try {
+    const qs = {
+      select: "id,source_sale_id,source_platform,bp_document_number,bp_sap_number,product_source_id,product_name,total_value_cents,sale_date,status,sap_sales_order,sap_sync_eligible",
+      company_code: "eq."+COMPANY_CODE,
+      sale_date: `gte.${start}`,
+      "sale_date.lt": end,
+      order: "sale_date.desc",
+      limit: "500"
+    };
+    // workaround: PostgREST aceita múltiplos sale_date com .gte e .lt usando params
+    const url=new URL(SUPABASE_URL+"/rest/v1/sales_orders");
+    url.searchParams.set("select", qs.select);
+    url.searchParams.set("company_code", "eq."+COMPANY_CODE);
+    url.searchParams.append("sale_date", `gte.${start}`);
+    url.searchParams.append("sale_date", `lt.${end}`);
+    if(plat) url.searchParams.set("source_platform", "eq."+plat);
+    url.searchParams.set("order", "sale_date.desc");
+    url.searchParams.set("limit", "500");
+    const r = await fetch(url, {headers: sbHeaders});
+    if(!r.ok) throw new Error(await r.text());
+    let vendas = await r.json();
+
+    // carregar mapping de produtos pra cruzar material
+    const prodIds = [...new Set(vendas.map(v=>v.product_source_id).filter(Boolean))];
+    let mappingByKey = {};
+    if(prodIds.length){
+      const u2=new URL(SUPABASE_URL+"/rest/v1/products_mapping");
+      u2.searchParams.set("select","source_id,source_platform,sap_material_code,sap_material_desc,mapping_status,product_name");
+      u2.searchParams.set("company_code","eq."+COMPANY_CODE);
+      u2.searchParams.set("source_id","in.("+prodIds.map(x=>`"${x}"`).join(",")+")");
+      const rr=await fetch(u2,{headers:sbHeaders});
+      const arr=await rr.json();
+      arr.forEach(p=> mappingByKey[p.source_platform+"|"+p.source_id]=p);
+    }
+
+    vendas.forEach(v=>{
+      const m = mappingByKey[v.source_platform+"|"+v.product_source_id];
+      v._material = m?.sap_material_code || null;
+      v._material_status = m?.mapping_status || null;
+      if(!v.bp_sap_number) v._estado="sem_bp";
+      else if(!v._material) v._estado="sem_material";
+      else if(m && m.mapping_status!=="mapped") v._estado="material_status_"+m.mapping_status;
+      else if(v.sap_sync_eligible===false) v._estado="nao_eligivel";
+      else if(v.sap_sales_order) v._estado="ja_emitida";
+      else v._estado="pronta";
+    });
+
+    if(estado==="pronta") vendas = vendas.filter(v=>v._estado==="pronta");
+    pendentes = vendas;
+    renderPendentes();
+  } catch(e){
+    el("tbody-pendentes").innerHTML=`<tr><td colspan="8" class="empty">Erro: ${e.message}</td></tr>`;
+  }
+}
+
+function renderPendentes(){
+  const tbody=el("tbody-pendentes");
+  if(pendentes.length===0){ tbody.innerHTML='<tr><td colspan="8" class="empty">Nenhuma venda no filtro.</td></tr>'; updateStats(); return; }
+  const rows = pendentes.map(v=>{
+    const pillClass = v._estado==="pronta"?"ok": v._estado==="ja_emitida"?"muted" : v._estado==="sem_bp"||v._estado==="sem_material"?"warn":"err";
+    const pillTxt = v._estado==="pronta"?"PRONTA": v._estado==="ja_emitida"?"OV "+v.sap_sales_order : v._estado;
+    const canSel = v._estado==="pronta";
+    return `<tr data-id="${v.id}">
+      <td><input type="checkbox" class="checkbox sel-pend" data-id="${v.id}" ${canSel?"":"disabled"}/></td>
+      <td>${fmtDate(v.sale_date)}</td>
+      <td>${v.source_platform}</td>
+      <td>${v.bp_document_number||"—"}<br/><small style="color:var(--text-dim);">BP ${v.bp_sap_number||"—"}</small></td>
+      <td>${(v.product_name||"").slice(0,40)}</td>
+      <td>${v._material||'<span class="pill warn">faltando</span>'}</td>
+      <td style="text-align:right;">${fmtBRL(v.total_value_cents)}</td>
+      <td><span class="pill ${pillClass}">${pillTxt}</span></td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows.join("");
+  tbody.querySelectorAll(".sel-pend").forEach(cb=> cb.addEventListener("change", updateStats));
+  updateStats();
+}
+
+function updateStats(){
+  const sel = [...document.querySelectorAll(".sel-pend:checked")].map(cb=>cb.dataset.id);
+  const total = pendentes.length;
+  const pronta = pendentes.filter(v=>v._estado==="pronta").length;
+  const bloq = pendentes.filter(v=>v._estado==="sem_bp"||v._estado==="sem_material"||v._estado?.startsWith("material_status_")).length;
+  const valor = pendentes.filter(v=>sel.includes(v.id)).reduce((a,v)=>a+(v.total_value_cents||0),0);
+  el("st-total").textContent = total;
+  el("st-pronta").textContent = pronta;
+  el("st-bloq").textContent = bloq;
+  el("st-valor").textContent = fmtBRL(valor);
+  el("batch-count").textContent = sel.length;
+  el("btn-emitir-batch").disabled = sel.length===0;
+}
+
+el("check-all").addEventListener("change", e=>{
+  document.querySelectorAll(".sel-pend:not(:disabled)").forEach(cb=> cb.checked = e.target.checked);
+  updateStats();
+});
+
+el("btn-reload").addEventListener("click", loadPendentes);
+el("fl-mes").addEventListener("change", loadPendentes);
+el("fl-plataforma").addEventListener("change", loadPendentes);
+el("fl-estado").addEventListener("change", loadPendentes);
+
+el("btn-emitir-batch").addEventListener("click", async ()=>{
+  const sel = [...document.querySelectorAll(".sel-pend:checked")].map(cb=>cb.dataset.id);
+  if(sel.length===0) return;
+  if(!confirm(`Vai emitir ${sel.length} OV(s) no SAP PRD da Staage. Confirma?`)) return;
+  const ovs = pendentes.filter(v=>sel.includes(v.id)).map(v=>({
+    sale_id: v.id,
+    company_code: COMPANY_CODE,
+    sold_to_party: v.bp_sap_number,
+    customer_po: v.source_platform+"-"+(v.source_sale_id||v.id).slice(0,20),
+    order_date_epoch_ms: new Date(v.sale_date).getTime(),
+    items: [{
+      material: v._material,
+      quantity: "1.000",
+      unit: "HR",
+      price_brl: (v.total_value_cents/100).toFixed(2),
+      text: (v.product_name||"").slice(0,40)
+    }]
+  }));
+  el("btn-emitir-batch").disabled = true; el("btn-emitir-batch").innerHTML='<span class="loading"></span> Emitindo…';
+  try {
+    const r = await fetch(WEBHOOK_OV, {method:"POST", headers:{"Content-Type":"application/json","X-API-Key":API_KEY}, body: JSON.stringify({ovs})});
+    const out = await r.json();
+    const detail = Array.isArray(out)?out[0]:out;
+    if(detail.ok){
+      toast(`<strong>OK</strong> · ${detail.succeeded}/${detail.processed} OVs emitidas. ${detail.errored?detail.errored+" com erro":""}`, "ok", 7000);
+      loadPendentes();
+    } else {
+      toast(`<strong>Falha</strong>: ${detail.error||"erro desconhecido"}`, "err", 8000);
+    }
+  } catch(e){
+    toast(`<strong>Erro de rede</strong>: ${e.message}`, "err");
+  } finally {
+    el("btn-emitir-batch").disabled = false; el("btn-emitir-batch").innerHTML='Emitir <span id="batch-count">0</span> OV(s) selecionada(s) no SAP PRD'; updateStats();
+  }
+});
+
+el("btn-export-csv").addEventListener("click", ()=>{
+  const rows = [["data","plataforma","cnpj_cpf","bp_sap","produto","material","valor_brl","estado"]];
+  pendentes.forEach(v=> rows.push([
+    fmtDate(v.sale_date), v.source_platform, v.bp_document_number, v.bp_sap_number||"",
+    v.product_name||"", v._material||"", (v.total_value_cents/100).toFixed(2), v._estado
+  ]));
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const a = document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download = `staage-pendentes-${el("fl-mes").value}.csv`; a.click();
+});
+
+// ============================================================================
+// AVULSO
+// ============================================================================
+el("av-data").valueAsDate = new Date();
+el("btn-limpar-avulso").addEventListener("click", ()=>{
+  ["av-bp","av-po","av-material","av-text"].forEach(id=> el(id).value="");
+  el("av-qty").value="1.000"; el("av-valor").value="";
+});
+el("btn-emitir-avulso").addEventListener("click", async ()=>{
+  const bp = el("av-bp").value.trim();
+  const mat = el("av-material").value.trim();
+  const val = parseFloat(el("av-valor").value);
+  if(!bp || !mat || !val){ toast("Preencha BP, material e valor.", "err"); return; }
+  if(!confirm(`Emitir OV no SAP PRD Staage:\nBP ${bp} · ${mat} · R$ ${val.toFixed(2)}\nConfirma?`)) return;
+  const ovs = [{
+    sale_id: null,
+    company_code: COMPANY_CODE,
+    sold_to_party: bp,
+    customer_po: (el("av-po").value||"AVULSO-"+Date.now()).slice(0,35),
+    order_date_epoch_ms: new Date(el("av-data").value+"T00:00:00Z").getTime(),
+    items: [{ material: mat, quantity: el("av-qty").value||"1.000", unit: el("av-unit").value, price_brl: val.toFixed(2), text: el("av-text").value||mat }]
+  }];
+  el("btn-emitir-avulso").disabled=true; el("btn-emitir-avulso").innerHTML='<span class="loading"></span> Emitindo…';
+  try {
+    const r = await fetch(WEBHOOK_OV, {method:"POST", headers:{"Content-Type":"application/json","X-API-Key":API_KEY}, body: JSON.stringify({ovs})});
+    const out = await r.json(); const detail = Array.isArray(out)?out[0]:out;
+    if(detail.ok && detail.succeeded>0){
+      const so = detail.details[0]?.sap_sales_order;
+      toast(`<strong>OV criada</strong> · SAP nº ${so}`, "ok", 8000);
+    } else {
+      toast(`<strong>Falha</strong>: ${detail.details?.[0]?.error||detail.error||"erro"}`, "err", 9000);
+    }
+  } catch(e){ toast("Erro de rede: "+e.message, "err"); }
+  finally { el("btn-emitir-avulso").disabled=false; el("btn-emitir-avulso").textContent="Emitir OV no SAP PRD"; }
+});
+
+// ============================================================================
+// IMPORT
+// ============================================================================
+let importRows = [];
+
+el("btn-download-tpl").addEventListener("click", ()=>{
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["bp_sap","material","quantidade","valor","descricao","customer_po","data"],
+    ["203858","SMM070","1.000","517.00","Serviço de marketing","PED-001","2026-05-19"]
+  ]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "OVs");
+  XLSX.writeFile(wb, "template-emitir-ov-staage.xlsx");
+});
+
+el("file-input").addEventListener("change", async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const buf = await f.arrayBuffer(); const wb = XLSX.read(buf);
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const arr = XLSX.utils.sheet_to_json(ws, {defval:""});
+  importRows = arr.map((row,i)=>{
+    const norm = {}; for(const k in row){ norm[String(k).toLowerCase().trim().replace(/[^a-z0-9]/g,"_")] = row[k]; }
+    return {
+      line: i+1,
+      bp_sap: String(norm.bp_sap||norm.sold_to_party||"").trim(),
+      material: String(norm.material||"").trim(),
+      qty: String(norm.quantidade||norm.qty||"1.000"),
+      valor: parseFloat(norm.valor||norm.price||0),
+      descricao: String(norm.descricao||norm.text||"").slice(0,40),
+      customer_po: String(norm.customer_po||norm.po||"").slice(0,35),
+      data: norm.data || new Date().toISOString().slice(0,10),
+      status: "pending"
+    };
+  });
+  renderImport();
+});
+function renderImport(){
+  const tbody = el("tbody-import");
+  if(importRows.length===0){ tbody.innerHTML='<tr><td colspan="7" class="empty">Selecione arquivo</td></tr>'; el("btn-emitir-import").disabled=true; return; }
+  tbody.innerHTML = importRows.map(r=>`<tr>
+    <td>${r.line}</td><td>${r.bp_sap||'<span class="pill warn">falta</span>'}</td>
+    <td>${r.material||'<span class="pill warn">falta</span>'}</td>
+    <td>${r.qty}</td><td>${fmtBRLNum(r.valor)}</td><td>${r.descricao}</td>
+    <td><span class="pill ${r.status==='ok'?'ok':r.status==='err'?'err':'muted'}">${r.status}</span>${r.sap_sales_order?' · OV '+r.sap_sales_order:''}${r.error?'<br/><small style="color:var(--danger);">'+r.error.slice(0,80)+'</small>':''}</td>
+  </tr>`).join("");
+  el("import-count").textContent = importRows.length;
+  el("btn-emitir-import").disabled = false;
+}
+el("btn-emitir-import").addEventListener("click", async ()=>{
+  if(!confirm(`Emitir ${importRows.length} OV(s) no SAP PRD Staage?`)) return;
+  const ovs = importRows.map(r=>({
+    sale_id: null,
+    company_code: COMPANY_CODE,
+    sold_to_party: r.bp_sap,
+    customer_po: (r.customer_po||"IMP-"+r.line).slice(0,35),
+    order_date_epoch_ms: new Date(r.data+"T00:00:00Z").getTime(),
+    items: [{material:r.material, quantity:r.qty, unit:"HR", price_brl: r.valor.toFixed(2), text: r.descricao||r.material}],
+    _import_line: r.line
+  }));
+  el("btn-emitir-import").disabled=true; el("btn-emitir-import").innerHTML='<span class="loading"></span> Emitindo…';
+  try {
+    const r = await fetch(WEBHOOK_OV, {method:"POST", headers:{"Content-Type":"application/json","X-API-Key":API_KEY}, body: JSON.stringify({ovs})});
+    const out = await r.json(); const detail = Array.isArray(out)?out[0]:out;
+    if(detail.ok){
+      detail.details.forEach((d,i)=>{ importRows[i].status = d.success?"ok":"err"; importRows[i].sap_sales_order = d.sap_sales_order; importRows[i].error = d.error; });
+      toast(`<strong>${detail.succeeded}/${detail.processed}</strong> OVs emitidas`, detail.errored?"err":"ok", 8000);
+    } else {
+      toast("Falha: "+(detail.error||"erro"), "err");
+    }
+    renderImport();
+  } catch(e){ toast("Erro: "+e.message, "err"); }
+  finally { el("btn-emitir-import").disabled=false; el("btn-emitir-import").innerHTML='Emitir <span id="import-count">0</span> OV(s)'; el("import-count").textContent = importRows.length; }
+});
+
+// ============================================================================
+// MATERIAIS
+// ============================================================================
+let materiaisSAP = [];
+
+async function loadMateriaisDatalist(){
+  try {
+    const arr = await sbGet("products_mapping", {
+      select: "sap_material_code",
+      company_code: "eq."+COMPANY_CODE,
+      "sap_material_code": "not.is.null"
+    });
+    materiaisSAP = [...new Set(arr.map(x=>x.sap_material_code).filter(Boolean))].sort();
+    el("materiais-list").innerHTML = materiaisSAP.map(m=>`<option value="${m}">`).join("");
+  } catch(e){ console.error(e); }
+}
+
+async function loadMateriais(){
+  el("tbody-mat").innerHTML='<tr><td colspan="5" class="empty"><span class="loading"></span></td></tr>';
+  const plat = el("mat-fl-plat").value;
+  const status = el("mat-fl-status").value;
+  const url=new URL(SUPABASE_URL+"/rest/v1/products_mapping");
+  url.searchParams.set("select","id,source_platform,source_id,product_name,product_type,sap_material_code,mapping_status");
+  url.searchParams.set("company_code","eq."+COMPANY_CODE);
+  if(plat) url.searchParams.set("source_platform","eq."+plat);
+  if(status) url.searchParams.set("mapping_status","eq."+status);
+  url.searchParams.set("order","source_platform.asc,product_name.asc");
+  url.searchParams.set("limit","500");
+  try {
+    const r=await fetch(url,{headers:sbHeaders}); const arr=await r.json();
+    el("mat-count").textContent = arr.length+" produtos";
+    if(arr.length===0){ el("tbody-mat").innerHTML='<tr><td colspan="5" class="empty">Nenhum produto.</td></tr>'; return; }
+    el("tbody-mat").innerHTML = arr.map(p=>`<tr data-id="${p.id}">
+      <td>${p.source_platform}</td>
+      <td>${(p.product_name||"").slice(0,80)}</td>
+      <td><span class="pill ${p.mapping_status==='mapped'?'ok':p.mapping_status==='not_in_sap'?'err':'warn'}">${p.mapping_status||"—"}</span></td>
+      <td><input class="mat-input" data-id="${p.id}" list="materiais-list" value="${p.sap_material_code||""}" placeholder="ex.: SMM070" style="max-width:140px;"/></td>
+      <td>
+        <button class="mat-save" data-id="${p.id}" style="padding:6px 12px;font-size:12px;">Salvar</button>
+        <button class="secondary mat-skip" data-id="${p.id}" style="padding:6px 12px;font-size:12px;">Ignorar</button>
+      </td>
+    </tr>`).join("");
+    document.querySelectorAll(".mat-save").forEach(b=> b.addEventListener("click", saveMat));
+    document.querySelectorAll(".mat-skip").forEach(b=> b.addEventListener("click", skipMat));
+  } catch(e){ el("tbody-mat").innerHTML=`<tr><td colspan="5" class="empty">Erro: ${e.message}</td></tr>`; }
+}
+async function saveMat(e){
+  const id = e.target.dataset.id;
+  const input = document.querySelector(`.mat-input[data-id="${id}"]`);
+  const code = input.value.trim().toUpperCase();
+  if(!code){ toast("Informe o código SAP", "err"); return; }
+  try {
+    await sbPatch("products_mapping", {id:"eq."+id}, {sap_material_code: code, mapping_status:"mapped", updated_at: new Date().toISOString()});
+    toast(`Material salvo: ${code}`, "ok", 2500);
+    e.target.closest("tr").style.opacity = 0.5;
+    loadMateriaisDatalist();
+  } catch(err){ toast("Erro: "+err.message, "err"); }
+}
+async function skipMat(e){
+  const id = e.target.dataset.id;
+  try {
+    await sbPatch("products_mapping", {id:"eq."+id}, {mapping_status:"ignored", updated_at: new Date().toISOString()});
+    toast("Marcado como ignorado", "ok", 2000);
+    e.target.closest("tr").style.opacity = 0.5;
+  } catch(err){ toast("Erro: "+err.message, "err"); }
+}
+el("btn-mat-reload").addEventListener("click", loadMateriais);
+el("mat-fl-plat").addEventListener("change", loadMateriais);
+el("mat-fl-status").addEventListener("change", loadMateriais);
+
+// ============================================================================
+// Init
+// ============================================================================
+popMesSelect();
+loadMateriaisDatalist();
+loadPendentes();
+</script>
+</body>
+</html>
