@@ -159,11 +159,12 @@
               <th>Produto</th>
               <th>Material SAP</th>
               <th style="text-align:right;">Valor</th>
+              <th>OV SAP</th>
               <th>Estado</th>
             </tr>
           </thead>
           <tbody id="tbody-pendentes">
-            <tr><td colspan="8" class="empty">Carregando…</td></tr>
+            <tr><td colspan="9" class="empty">Carregando…</td></tr>
           </tbody>
         </table>
       </div>
@@ -341,7 +342,7 @@ function popMesSelect(){
 }
 
 async function loadPendentes(){
-  el("tbody-pendentes").innerHTML='<tr><td colspan="8" class="empty"><span class="loading"></span> Carregando…</td></tr>';
+  el("tbody-pendentes").innerHTML='<tr><td colspan="9" class="empty"><span class="loading"></span> Carregando…</td></tr>';
   const mes = el("fl-mes").value;
   const plat = el("fl-plataforma").value;
   const estado = el("fl-estado").value;
@@ -409,7 +410,7 @@ async function loadPendentes(){
     pendentes = vendas;
     renderPendentes();
   } catch(e){
-    el("tbody-pendentes").innerHTML=`<tr><td colspan="8" class="empty">Erro: ${e.message}</td></tr>`;
+    el("tbody-pendentes").innerHTML=`<tr><td colspan="9" class="empty">Erro: ${e.message}</td></tr>`;
   }
 }
 
@@ -447,7 +448,7 @@ const ESTADO_LABEL = {
 
 function renderPendentes(){
   const tbody=el("tbody-pendentes");
-  if(pendentes.length===0){ tbody.innerHTML='<tr><td colspan="8" class="empty">Nenhuma venda no filtro.</td></tr>'; updateStats(); return; }
+  if(pendentes.length===0){ tbody.innerHTML='<tr><td colspan="9" class="empty">Nenhuma venda no filtro.</td></tr>'; updateStats(); return; }
   const rows = pendentes.map(v=>{
     const lbl = ESTADO_LABEL[v._estado] || { txt: v._estado, cls: "err" };
     const pillTxt = v._estado==="ja_emitida" ? "OV "+v.sap_sales_order : lbl.txt;
@@ -468,6 +469,7 @@ function renderPendentes(){
       <td>${(v.product_name||"").slice(0,40)}</td>
       <td>${v._material||'<span class="pill warn">faltando</span>'}</td>
       <td style="text-align:right;">${fmtBRL(v.total_value_cents)}</td>
+      <td>${v.sap_sales_order?'<strong style="color:var(--accent);">'+v.sap_sales_order+'</strong>':'<span style="color:var(--text-dim);">—</span>'}</td>
       <td><span class="pill ${lbl.cls}">${pillTxt}</span>${action?"<br/>"+action:""}</td>
     </tr>`;
   });
@@ -583,10 +585,11 @@ el("btn-bp-massa").addEventListener("click", ()=>{
 });
 
 el("btn-export-csv").addEventListener("click", ()=>{
-  const rows = [["data","plataforma","cnpj_cpf","bp_sap","produto","material","valor_brl","estado"]];
+  const rows = [["data","plataforma","cnpj_cpf","bp_sap","produto","material","valor_brl","sap_sales_order","estado"]];
   pendentes.forEach(v=> rows.push([
-    fmtDate(v.sale_date), v.source_platform, v.bp_document_number, v.bp_sap_number||"",
-    v.product_name||"", v._material||"", (v.total_value_cents/100).toFixed(2), v._estado
+    fmtDate(v.sale_date), v.source_platform, v.bp_document_number, v._live_bp_sap||"",
+    v.product_name||"", v._material||"", (v.total_value_cents/100).toFixed(2),
+    v.sap_sales_order||"", v._estado
   ]));
   const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
