@@ -347,17 +347,8 @@ async function loadPendentes(){
   const end = endD.toISOString().slice(0,10);
 
   try {
-    const qs = {
-      select: "id,source_sale_id,source_platform,bp_document_number,bp_sap_number,product_source_id,product_name,total_value_cents,sale_date,status,sap_sales_order,sap_sync_eligible",
-      company_code: "eq."+COMPANY_CODE,
-      sale_date: `gte.${start}`,
-      "sale_date.lt": end,
-      order: "sale_date.desc",
-      limit: "500"
-    };
-    // workaround: PostgREST aceita múltiplos sale_date com .gte e .lt usando params
     const url=new URL(SUPABASE_URL+"/rest/v1/sales_orders");
-    url.searchParams.set("select", qs.select);
+    url.searchParams.set("select","id,source_sale_id,source_platform,bp_document_number,bp_sap_number,product_source_id,product_name,total_value_cents,sale_date,status,sap_sales_order,sap_sync_eligible");
     url.searchParams.set("company_code", "eq."+COMPANY_CODE);
     url.searchParams.append("sale_date", `gte.${start}`);
     url.searchParams.append("sale_date", `lt.${end}`);
@@ -368,7 +359,19 @@ async function loadPendentes(){
     if(!r.ok) throw new Error(await r.text());
     let vendas = await r.json();
 
-    // carregar mapping de produtos pra cruzar material
+    // Lookup live de BPs — reflete cadastros recentes mesmo sem rebackfill
+    const docs = [...new Set(vendas.map(v=>v.bp_document_number).filter(Boolean))];
+    let bpByDoc = {};
+    if(docs.length){
+      const u3=new URL(SUPABASE_URL+"/rest/v1/business_partners");
+      u3.searchParams.set("select","document_number,sap_bp_number,full_name,email,phone_full,zip_code,street,house_number,neighborhood,city,state");
+      u3.searchParams.set("company_code","eq."+COMPANY_CODE);
+      u3.searchParams.set("document_number","in.("+docs.map(x=>`"${x}"`).join(",")+")");
+      const rr=await fetch(u3,{headers:sbHeaders});
+      (await rr.json()).forEach(bp=> bpByDoc[bp.document_number] = bp);
+    }
+
+    // Mapping de produtos
     const prodIds = [...new Set(vendas.map(v=>v.product_source_id).filter(Boolean))];
     let mappingByKey = {};
     if(prodIds.length){
@@ -377,19 +380,24 @@ async function loadPendentes(){
       u2.searchParams.set("company_code","eq."+COMPANY_CODE);
       u2.searchParams.set("source_id","in.("+prodIds.map(x=>`"${x}"`).join(",")+")");
       const rr=await fetch(u2,{headers:sbHeaders});
-      const arr=await rr.json();
-      arr.forEach(p=> mappingByKey[p.source_platform+"|"+p.source_id]=p);
+      (await rr.json()).forEach(p=> mappingByKey[p.source_platform+"|"+p.source_id]=p);
     }
 
     vendas.forEach(v=>{
       const m = mappingByKey[v.source_platform+"|"+v.product_source_id];
+      const bp = bpByDoc[v.bp_document_number];
       v._material = m?.sap_material_code || null;
       v._material_status = m?.mapping_status || null;
-      if(!v.bp_sap_number) v._estado="sem_bp";
+      v._bp = bp || null;
+      // Lookup live: se a coluna em sales_orders está vazia mas o BP foi cadastrado agora, reflete
+      const liveBpSap = v.bp_sap_number || bp?.sap_bp_number || null;
+      v._live_bp_sap = liveBpSap;
+
+      if(v.sap_sales_order) v._estado="ja_emitida";
+      else if(v.sap_sync_eligible===false) v._estado="r0_cortesia";
+      else if(!liveBpSap) v._estado = bp ? "sem_bp_sap" : "sem_bp";
       else if(!v._material) v._estado="sem_material";
       else if(m && m.mapping_status!=="mapped") v._estado="material_status_"+m.mapping_status;
-      else if(v.sap_sync_eligible===false) v._estado="nao_eligivel";
-      else if(v.sap_sales_order) v._estado="ja_emitida";
       else v._estado="pronta";
     });
 
@@ -401,26 +409,49 @@ async function loadPendentes(){
   }
 }
 
-function bpDeeplink(doc, plat){
+function bpDeeplink(v){
   const url = new URL("https://bsoarees.github.io/cadastrar-bp-v4/");
-  url.searchParams.set("doc", doc||"");
+  url.searchParams.set("doc", v.bp_document_number||"");
   url.searchParams.set("company", COMPANY_CODE);
-  if(plat) url.searchParams.set("platform", plat);
+  if(v.source_platform) url.searchParams.set("platform", v.source_platform);
+  const bp = v._bp;
+  if(bp){
+    if(bp.full_name) url.searchParams.set("nome", bp.full_name);
+    if(bp.email) url.searchParams.set("email", bp.email);
+    if(bp.phone_full) url.searchParams.set("phone", bp.phone_full);
+    if(bp.zip_code) url.searchParams.set("cep", bp.zip_code);
+    if(bp.street) url.searchParams.set("rua", bp.street);
+    if(bp.house_number) url.searchParams.set("numero", bp.house_number);
+    if(bp.neighborhood) url.searchParams.set("bairro", bp.neighborhood);
+    if(bp.city) url.searchParams.set("cidade", bp.city);
+    if(bp.state) url.searchParams.set("uf", bp.state);
+  }
   return url.toString();
 }
+
+const ESTADO_LABEL = {
+  pronta:        { txt:"PRONTA",          cls:"ok"    },
+  ja_emitida:    { txt:"EMITIDA",         cls:"muted" },
+  r0_cortesia:   { txt:"R$ 0 · cortesia", cls:"muted" },
+  sem_bp:        { txt:"sem BP no SAP",   cls:"warn"  },
+  sem_bp_sap:    { txt:"BP existe · falta SAP", cls:"warn" },
+  sem_material:  { txt:"sem material",    cls:"warn"  },
+  material_status_pending:    { txt:"material pendente", cls:"err" },
+  material_status_not_in_sap: { txt:"material n/SAP",    cls:"err" },
+  material_status_ignored:    { txt:"material ignored",  cls:"muted" }
+};
 
 function renderPendentes(){
   const tbody=el("tbody-pendentes");
   if(pendentes.length===0){ tbody.innerHTML='<tr><td colspan="8" class="empty">Nenhuma venda no filtro.</td></tr>'; updateStats(); return; }
   const rows = pendentes.map(v=>{
-    const pillClass = v._estado==="pronta"?"ok": v._estado==="ja_emitida"?"muted" : v._estado==="sem_bp"||v._estado==="sem_material"?"warn":"err";
-    const pillTxt = v._estado==="pronta"?"PRONTA": v._estado==="ja_emitida"?"OV "+v.sap_sales_order : v._estado;
+    const lbl = ESTADO_LABEL[v._estado] || { txt: v._estado, cls: "err" };
+    const pillTxt = v._estado==="ja_emitida" ? "OV "+v.sap_sales_order : lbl.txt;
     const canSel = v._estado==="pronta";
 
-    // Action por estado: cada bloqueio tem 1 link pra desbloquear
     let action = "";
-    if(v._estado==="sem_bp" && v.bp_document_number){
-      action = `<a href="${bpDeeplink(v.bp_document_number, v.source_platform)}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none;">→ Cadastrar BP</a>`;
+    if((v._estado==="sem_bp" || v._estado==="sem_bp_sap") && v.bp_document_number){
+      action = `<a href="${bpDeeplink(v)}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none;">→ Cadastrar BP</a>`;
     } else if(v._estado==="sem_material" || (v._estado||"").startsWith("material_status_")){
       action = `<a href="#" class="link-bater-mat" data-prod="${(v.product_source_id||"")}" data-plat="${v.source_platform}" style="color:var(--accent);font-size:11px;text-decoration:none;">→ Bater material</a>`;
     }
@@ -429,11 +460,11 @@ function renderPendentes(){
       <td><input type="checkbox" class="checkbox sel-pend" data-id="${v.id}" ${canSel?"":"disabled"}/></td>
       <td>${fmtDate(v.sale_date)}</td>
       <td>${v.source_platform}</td>
-      <td>${v.bp_document_number||"—"}<br/><small style="color:var(--text-dim);">BP ${v.bp_sap_number||"—"}</small></td>
+      <td>${v.bp_document_number||"—"}<br/><small style="color:var(--text-dim);">BP ${v._live_bp_sap||"—"}</small></td>
       <td>${(v.product_name||"").slice(0,40)}</td>
       <td>${v._material||'<span class="pill warn">faltando</span>'}</td>
       <td style="text-align:right;">${fmtBRL(v.total_value_cents)}</td>
-      <td><span class="pill ${pillClass}">${pillTxt}</span>${action?"<br/>"+action:""}</td>
+      <td><span class="pill ${lbl.cls}">${pillTxt}</span>${action?"<br/>"+action:""}</td>
     </tr>`;
   });
   tbody.innerHTML = rows.join("");
@@ -482,7 +513,7 @@ el("btn-emitir-batch").addEventListener("click", async ()=>{
   const ovs = pendentes.filter(v=>sel.includes(v.id)).map(v=>({
     sale_id: v.id,
     company_code: COMPANY_CODE,
-    sold_to_party: v.bp_sap_number,
+    sold_to_party: v._live_bp_sap,
     customer_po: v.source_platform+"-"+(v.source_sale_id||v.id).slice(0,20),
     order_date_epoch_ms: new Date(v.sale_date).getTime(),
     items: [{
