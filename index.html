@@ -169,6 +169,7 @@
 
       <div class="actions">
         <button id="btn-emitir-batch" disabled>Emitir <span id="batch-count">0</span> OV(s) selecionada(s) no SAP PRD</button>
+        <button id="btn-bp-massa" class="secondary" title="Gera XLSX com todos os BPs faltantes do filtro e abre cadastrar-bp-v4">Cadastrar BPs em massa</button>
         <button id="btn-export-csv" class="secondary">Exportar CSV</button>
       </div>
     </div>
@@ -540,6 +541,39 @@ el("btn-emitir-batch").addEventListener("click", async ()=>{
   } finally {
     el("btn-emitir-batch").disabled = false; el("btn-emitir-batch").innerHTML='Emitir <span id="batch-count">0</span> OV(s) selecionada(s) no SAP PRD'; updateStats();
   }
+});
+
+el("btn-bp-massa").addEventListener("click", ()=>{
+  // Pega vendas com BP faltando (sem_bp ou sem_bp_sap), dedup por doc, monta XLSX no formato cadastrar-bp-v4
+  const faltantes = pendentes.filter(v=> (v._estado==="sem_bp" || v._estado==="sem_bp_sap") && v.bp_document_number);
+  if(faltantes.length===0){ toast("Nenhum BP faltando no filtro atual.", "err"); return; }
+  const dedup = new Map();
+  faltantes.forEach(v=>{
+    const key = v.bp_document_number;
+    if(dedup.has(key)) return;
+    const bp = v._bp || {};
+    dedup.set(key, {
+      cnpj_cpf: v.bp_document_number,
+      full_name: bp.full_name || "",
+      email: bp.email || "",
+      phone: bp.phone_full || "",
+      zip_code: bp.zip_code || "",
+      street: bp.street || "",
+      house_number: bp.house_number || "",
+      neighborhood: bp.neighborhood || "",
+      city: bp.city || "",
+      state: bp.state || ""
+    });
+  });
+  const rows = [...dedup.values()];
+  const cols = ["cnpj_cpf","full_name","email","phone","zip_code","street","house_number","neighborhood","city","state"];
+  const aoa = [cols, ...rows.map(r=> cols.map(c=> r[c] || ""))];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "BPs");
+  const fname = `bps-staage-faltantes-${new Date().toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  toast(`<strong>${rows.length} BP(s) únicos</strong> exportados em ${fname}.<br/>Abrindo cadastrar-bp-v4…`, "ok", 6000);
+  setTimeout(()=> window.open("https://bsoarees.github.io/cadastrar-bp-v4/?company="+COMPANY_CODE, "_blank"), 800);
 });
 
 el("btn-export-csv").addEventListener("click", ()=>{
