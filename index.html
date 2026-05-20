@@ -153,6 +153,20 @@
     <span style="margin-left:auto;color:var(--text-dim);">v0.1 · <a href="https://github.com/BSoarees/emitir-ov-staage" style="color:var(--accent);">source</a></span>
   </div>
 
+  <!-- Indicador de frescor das bases (sync das plataformas) -->
+  <div id="frescor-bar" class="card" style="padding:14px 18px; margin-bottom:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <strong style="font-weight:500; font-size:13px;">Frescor das bases</strong>
+        <small style="color:var(--text-muted);">última venda sincronizada por plataforma</small>
+      </div>
+      <div id="frescor-list" style="display:flex; gap:10px; flex-wrap:wrap; font-size:12px;">
+        <span style="color:var(--text-muted);">Carregando…</span>
+      </div>
+      <button id="btn-frescor-reload" class="secondary" style="padding:6px 12px; font-size:12px; flex:0 0 auto;">↻ Atualizar</button>
+    </div>
+  </div>
+
   <!-- Painel de OVs emitidas (persistente entre reloads) -->
   <div id="ovs-emitidas-panel" class="card" style="display:none; border-color:var(--accent); background:rgba(16,185,129,0.05);">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
@@ -406,6 +420,39 @@ function renderOvsEmitidas(){
     </tr>`).join("")}</tbody>
   </table>`;
 }
+// ============================================================================
+// Frescor das bases: última venda sincronizada por plataforma
+// ============================================================================
+async function loadFrescor(){
+  const plats = ["eduzz","easyflow","tmb","pagarme"];
+  const list = el("frescor-list");
+  list.innerHTML = '<span style="color:var(--text-muted);"><span class="loading"></span> Carregando…</span>';
+  try {
+    const results = await Promise.all(plats.map(async p=>{
+      const url = new URL(SUPABASE_URL+"/rest/v1/sales_orders");
+      url.searchParams.set("select","sale_date");
+      url.searchParams.set("company_code","eq."+COMPANY_CODE);
+      url.searchParams.set("source_platform","eq."+p);
+      url.searchParams.set("sale_date","not.is.null");
+      url.searchParams.set("order","sale_date.desc");
+      url.searchParams.set("limit","1");
+      const r = await fetch(url, {headers: sbHeaders});
+      const arr = await r.json();
+      return { plat: p, last: arr[0]?.sale_date || null };
+    }));
+    list.innerHTML = results.map(r=>{
+      if(!r.last) return `<span style="padding:4px 10px;border-radius:6px;background:var(--surface);color:var(--text-muted);">${r.plat}: —</span>`;
+      const d = new Date(r.last);
+      const horas = (Date.now() - d.getTime())/3600000;
+      const cls = horas < 2 ? "ok" : (horas < 24 ? "warn" : "err");
+      const rel = horas < 1 ? "<1h" : horas < 24 ? Math.round(horas)+"h atrás" : Math.round(horas/24)+"d atrás";
+      return `<span class="pill ${cls}" title="${d.toLocaleString('pt-BR')}">${r.plat}: <strong>${rel}</strong></span>`;
+    }).join("");
+  } catch(e){
+    list.innerHTML = `<span style="color:var(--danger);">Erro: ${e.message}</span>`;
+  }
+}
+
 async function loadHistoricoSAP(){
   // Sincroniza histórico local com OVs já criadas no SAP via Supabase log
   try {
@@ -450,6 +497,9 @@ document.addEventListener("DOMContentLoaded", ()=>{
   });
   renderOvsEmitidas();
   loadHistoricoSAP(); // puxa OVs do Supabase pra popular automaticamente
+  loadFrescor();
+  const btnFrescor = el("btn-frescor-reload");
+  if(btnFrescor) btnFrescor.addEventListener("click", loadFrescor);
 });
 
 // ============================================================================
