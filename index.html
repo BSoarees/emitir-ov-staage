@@ -103,6 +103,15 @@
     <span style="margin-left:auto;color:var(--text-dim);">v0.1 · <a href="https://github.com/BSoarees/emitir-ov-staage" style="color:var(--accent);">source</a></span>
   </div>
 
+  <!-- Painel de OVs emitidas (persistente entre reloads) -->
+  <div id="ovs-emitidas-panel" class="card" style="display:none; border-color:var(--accent); background:rgba(16,185,129,0.05);">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <h2 style="margin:0;">OVs emitidas nesta sessão <small id="ovs-emitidas-count" style="color:var(--accent);"></small></h2>
+      <button id="btn-limpar-ovs" class="secondary" style="padding:6px 12px; font-size:12px;">Limpar histórico</button>
+    </div>
+    <div id="ovs-emitidas-list" class="scroll-y" style="max-height:200px;"></div>
+  </div>
+
   <div class="tabs">
     <button class="tab active" data-tab="pendentes">Pendentes</button>
     <button class="tab" data-tab="avulso">Avulso</button>
@@ -312,6 +321,50 @@ async function sbPatch(path, qs, body){
   const r=await fetch(url, {method:"PATCH", headers:{...sbHeaders, Prefer:"return=minimal"}, body: JSON.stringify(body)});
   if(!r.ok) throw new Error("Supabase PATCH "+r.status+": "+await r.text());
 }
+
+// ============================================================================
+// Histórico de OVs emitidas (persistente em localStorage)
+// ============================================================================
+const OVS_KEY = "staage_ovs_emitidas_v1";
+function loadOvsEmitidas(){ try { return JSON.parse(localStorage.getItem(OVS_KEY)||"[]"); } catch(_){ return []; } }
+function saveOvsEmitidas(arr){ try { localStorage.setItem(OVS_KEY, JSON.stringify(arr.slice(0, 100))); } catch(_){} }
+function registrarOV(ov){
+  // ov = { sap_sales_order, bp, material, valor, produto, origem, emitida_em }
+  const arr = loadOvsEmitidas();
+  arr.unshift({ ...ov, emitida_em: ov.emitida_em || new Date().toISOString() });
+  saveOvsEmitidas(arr);
+  renderOvsEmitidas();
+}
+function renderOvsEmitidas(){
+  const arr = loadOvsEmitidas();
+  const panel = el("ovs-emitidas-panel");
+  const list = el("ovs-emitidas-list");
+  const count = el("ovs-emitidas-count");
+  if(arr.length===0){ panel.style.display="none"; return; }
+  panel.style.display="block";
+  count.textContent = `· ${arr.length} OV${arr.length>1?"s":""}`;
+  list.innerHTML = `<table style="font-size:12px;">
+    <thead><tr><th>OV SAP</th><th>BP</th><th>Material</th><th>Produto</th><th style="text-align:right;">Valor</th><th>Emitida</th><th>Origem</th></tr></thead>
+    <tbody>${arr.map(o=>`<tr>
+      <td><strong style="color:var(--accent); font-size:14px;">${o.sap_sales_order||"—"}</strong></td>
+      <td>${o.bp||"—"}</td>
+      <td>${o.material||"—"}</td>
+      <td>${(o.produto||"").slice(0,40)}</td>
+      <td style="text-align:right;">${fmtBRLNum(o.valor||0)}</td>
+      <td>${new Date(o.emitida_em).toLocaleString("pt-BR")}</td>
+      <td><span class="pill muted">${o.origem||"—"}</span></td>
+    </tr>`).join("")}</tbody>
+  </table>`;
+}
+document.addEventListener("DOMContentLoaded", ()=>{
+  const btn = el("btn-limpar-ovs");
+  if(btn) btn.addEventListener("click", ()=>{
+    if(confirm("Limpar histórico de OVs emitidas? (não apaga no SAP — só some daqui)")){
+      saveOvsEmitidas([]); renderOvsEmitidas();
+    }
+  });
+  renderOvsEmitidas();
+});
 
 // ============================================================================
 // Tabs
@@ -536,7 +589,19 @@ el("btn-emitir-batch").addEventListener("click", async ()=>{
     const out = await r.json();
     const detail = Array.isArray(out)?out[0]:out;
     if(detail.ok){
-      toast(`<strong>OK</strong> · ${detail.succeeded}/${detail.processed} OVs emitidas. ${detail.errored?detail.errored+" com erro":""}`, "ok", 7000);
+      // Registra cada OV criada no histórico persistente
+      (detail.details||[]).filter(d=>d.success && d.sap_sales_order).forEach(d=>{
+        const venda = pendentes.find(v=>v.id===d.sale_id);
+        registrarOV({
+          sap_sales_order: d.sap_sales_order,
+          bp: d.sold_to_party,
+          material: venda?._material,
+          valor: venda ? (venda.total_value_cents/100) : null,
+          produto: venda?.product_name,
+          origem: "Pendentes ("+(venda?.source_platform||"?")+")"
+        });
+      });
+      toast(`<strong>OK</strong> · ${detail.succeeded}/${detail.processed} OVs emitidas. ${detail.errored?detail.errored+" com erro":""}`, "ok", 10000);
       loadPendentes();
     } else {
       toast(`<strong>Falha</strong>: ${detail.error||"erro desconhecido"}`, "err", 8000);
@@ -625,7 +690,8 @@ el("btn-emitir-avulso").addEventListener("click", async ()=>{
     const out = await r.json(); const detail = Array.isArray(out)?out[0]:out;
     if(detail.ok && detail.succeeded>0){
       const so = detail.details[0]?.sap_sales_order;
-      toast(`<strong>OV criada</strong> · SAP nº ${so}`, "ok", 8000);
+      registrarOV({ sap_sales_order: so, bp, material: mat, valor: val, produto: el("av-text").value||mat, origem: "Avulso" });
+      toast(`<strong>OV criada</strong> · SAP nº ${so} (registrado no histórico acima)`, "ok", 10000);
     } else {
       toast(`<strong>Falha</strong>: ${detail.details?.[0]?.error||detail.error||"erro"}`, "err", 9000);
     }
@@ -696,8 +762,22 @@ el("btn-emitir-import").addEventListener("click", async ()=>{
     const r = await fetch(WEBHOOK_OV, {method:"POST", headers:{"Content-Type":"application/json","X-API-Key":API_KEY}, body: JSON.stringify({ovs})});
     const out = await r.json(); const detail = Array.isArray(out)?out[0]:out;
     if(detail.ok){
-      detail.details.forEach((d,i)=>{ importRows[i].status = d.success?"ok":"err"; importRows[i].sap_sales_order = d.sap_sales_order; importRows[i].error = d.error; });
-      toast(`<strong>${detail.succeeded}/${detail.processed}</strong> OVs emitidas`, detail.errored?"err":"ok", 8000);
+      detail.details.forEach((d,i)=>{
+        importRows[i].status = d.success?"ok":"err";
+        importRows[i].sap_sales_order = d.sap_sales_order;
+        importRows[i].error = d.error;
+        if(d.success && d.sap_sales_order){
+          registrarOV({
+            sap_sales_order: d.sap_sales_order,
+            bp: d.sold_to_party,
+            material: importRows[i].material,
+            valor: importRows[i].valor,
+            produto: importRows[i].descricao,
+            origem: "Import planilha"
+          });
+        }
+      });
+      toast(`<strong>${detail.succeeded}/${detail.processed}</strong> OVs emitidas`, detail.errored?"err":"ok", 10000);
     } else {
       toast("Falha: "+(detail.error||"erro"), "err");
     }
