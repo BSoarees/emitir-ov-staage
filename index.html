@@ -163,7 +163,8 @@
       <div id="frescor-list" style="display:flex; gap:10px; flex-wrap:wrap; font-size:12px;">
         <span style="color:var(--text-muted);">Carregando…</span>
       </div>
-      <button id="btn-frescor-reload" class="secondary" style="padding:6px 12px; font-size:12px; flex:0 0 auto;">↻ Atualizar</button>
+      <button id="btn-frescor-reload" class="secondary" style="padding:6px 12px; font-size:12px; flex:0 0 auto;" title="Apenas re-lê do Supabase">↻ Re-ler</button>
+      <button id="btn-sync-now" style="padding:6px 14px; font-size:12px; flex:0 0 auto;" title="Força sync das 3 plataformas Staage agora">⚡ Sync agora</button>
     </div>
   </div>
 
@@ -500,7 +501,42 @@ document.addEventListener("DOMContentLoaded", ()=>{
   loadFrescor();
   const btnFrescor = el("btn-frescor-reload");
   if(btnFrescor) btnFrescor.addEventListener("click", loadFrescor);
+  const btnSync = el("btn-sync-now");
+  if(btnSync) btnSync.addEventListener("click", syncNow);
 });
+
+// ============================================================================
+// Sync das plataformas Staage (chama webhooks dos schedulers em paralelo)
+// ============================================================================
+const SYNC_WEBHOOKS = {
+  eduzz:    "https://n8n.main.mktlab.app/webhook/staage-sync-eduzz",
+  easyflow: "https://n8n.main.mktlab.app/webhook/staage-sync-easyflow",
+  tmb:      "https://n8n.main.mktlab.app/webhook/staage-sync-tmb"
+};
+async function syncNow(){
+  const btn = el("btn-sync-now");
+  if(!confirm("Forçar sync das 3 plataformas Staage agora (Eduzz, EasyFlow, TMB)?\nIsso vai puxar vendas recentes pro Supabase e pode demorar 30-60s.")) return;
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span> Sincronizando…';
+  const inicio = Date.now();
+  const results = await Promise.all(Object.entries(SYNC_WEBHOOKS).map(async ([plat, url])=>{
+    const t0 = Date.now();
+    try {
+      const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body: "{}"});
+      const ok = r.ok;
+      return { plat, ok, dur: Math.round((Date.now()-t0)/1000), status: r.status };
+    } catch(e){ return { plat, ok:false, dur:0, error: e.message }; }
+  }));
+  const total = Math.round((Date.now()-inicio)/1000);
+  const okN = results.filter(r=>r.ok).length;
+  const linhas = results.map(r=> r.ok
+    ? `<li>${r.plat}: <span class="pill ok">OK</span> ${r.dur}s</li>`
+    : `<li>${r.plat}: <span class="pill err">falhou${r.status?" "+r.status:""}</span> ${r.error||""}</li>`).join("");
+  toast(`<strong>Sync ${okN}/3 plataformas em ${total}s</strong><ul style="margin:8px 0 0; padding-left:20px;">${linhas}</ul>`, okN===3?"ok":"err", 12000);
+  btn.disabled = false; btn.innerHTML = "⚡ Sync agora";
+  // Recarrega frescor + pendentes pra refletir vendas novas
+  loadFrescor();
+  if(typeof loadPendentes==="function") loadPendentes();
+}
 
 // ============================================================================
 // Tabs
