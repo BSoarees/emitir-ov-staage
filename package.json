@@ -1,0 +1,6 @@
+{
+  "name": "crxate-ov",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Crxate · Emitir OV Staage via n8n (com proxy seguro)"
+}
